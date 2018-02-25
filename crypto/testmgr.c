@@ -3558,6 +3558,21 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		/* Same as xts(aes) except the key is stored in
+		 * hardware secure memory which we reference by slot
+		 */
+		.alg = "xts(haes)",
+		.test = alg_test_null,
+		.fips_allowed = 1,
+	}, {
+		.alg = "xts4096(haes)",
+		.test = alg_test_null,
+		.fips_allowed = 1,
+	}, {
+		.alg = "xts512(haes)",
+		.test = alg_test_null,
+		.fips_allowed = 1,
+	}, {
 		.alg = "xts(camellia)",
 		.test = alg_test_skcipher,
 		.suite = {
