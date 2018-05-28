@@ -66,6 +66,43 @@
 		interrupt-parent = <&intc>;
 		ranges;
 
+		/* AXI bridges for ccree */
+		axi_apb_bridge_0: axi-apb-bridge@40000000 {
+			compatible = "simple-bus";
+			#address-cells = <0x1>;
+			#size-cells = <0x1>;
+			ranges;
+			arm_cc_env: arm_cc_env@0x40000000 {
+				reg = < 0x40000000 0x10000 >;
+			} ;
+		};
+
+		axi_apb_bridge_1: axi-apb-bridge@80000000 {
+			compatible = "simple-bus";
+			#address-cells = <0x1>;
+			#size-cells = <0x1>;
+			ranges;
+			arm_ccree: arm_ccree@80000000 {
+				compatible = "arm,cryptocell-713-ree";
+				interrupt-parent = <&intc>;
+				interrupts = < 0 30 4 >;
+				reg = < 0x80000000 0x10000 >;
+				xlnx,addr-pipe-depth = <0x1>;
+				xlnx,dphase-timeout = <0x8>;
+				xlnx,family = "zynq";
+				xlnx,length-width = <0xc>;
+				xlnx,max-burst-len = <0x10>;
+				xlnx,native-data-width = <0x40>;
+				xlnx,num-mem = <0x1>;
+				xlnx,num-reg = <0x1>;
+				xlnx,s-axi-min-size = <0x2ff>;
+				xlnx,slv-awidth = <0x20>;
+				xlnx,slv-dwidth = <0x20>;
+				xlnx,use-wstrb = <0x1>;
+			} ;
+		};
+		/* END of AXI bridges for ccree */
+
 		adc: adc@f8007100 {
 			compatible = "xlnx,zynq-xadc-1.00.a";
 			reg = <0xf8007100 0x20>;
@@ -248,7 +285,7 @@
 			clkc: clkc@100 {
 				#clock-cells = <1>;
 				compatible = "xlnx,ps7-clkc";
-				fclk-enable = <0>;
+				fclk-enable = <0xf>;
 				clock-output-names = "armpll", "ddrpll", "iopll", "cpu_6or4x",
 						"cpu_3or2x", "cpu_2x", "cpu_1x", "ddr2x", "ddr3x",
 						"dci", "lqspi", "smc", "pcap", "gem0", "gem1",
