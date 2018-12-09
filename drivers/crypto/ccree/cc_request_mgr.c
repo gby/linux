@@ -2,6 +2,7 @@
 /* Copyright (C) 2012-2018 ARM Limited or its affiliates. */
 
 #include <linux/kernel.h>
+#include <linux/nospec.h>
 #include "cc_driver.h"
 #include "cc_buffer_mgr.h"
 #include "cc_request_mgr.h"
@@ -52,10 +53,37 @@ struct cc_bl_item {
 	bool notif;
 };
 
+static const u32 cc_cpp_int_masks[CC_CPP_NUM_ALGS][CC_CPP_NUM_SLOTS] = {
+	{ BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_0_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_1_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_2_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_3_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_4_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_5_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_6_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_AES_7_INT_BIT_SHIFT) },
+	{ BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_0_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_1_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_2_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_3_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_4_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_5_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_6_INT_BIT_SHIFT),
+	  BIT(CC_HOST_IRR_REE_OP_ABORTED_SM_7_INT_BIT_SHIFT) }
+};
+
 static void comp_handler(unsigned long devarg);
 #ifdef COMP_IN_WQ
 static void comp_work_handler(struct work_struct *work);
 #endif
+
+static inline u32 cc_cpp_int_mask(enum cc_cpp_alg alg, int slot)
+{
+	alg = array_index_nospec(alg, CC_CPP_NUM_ALGS);
+	slot = array_index_nospec(slot, CC_CPP_NUM_SLOTS);
+
+	return cc_cpp_int_masks[alg][slot];
+}
 
 void cc_req_mgr_fini(struct cc_drvdata *drvdata)
 {
@@ -579,6 +607,8 @@ static void proc_completions(struct cc_drvdata *drvdata)
 						drvdata->request_mgr_handle;
 	unsigned int *tail = &request_mgr_handle->req_queue_tail;
 	unsigned int *head = &request_mgr_handle->req_queue_head;
+	int rc;
+	u32 mask;
 
 	while (request_mgr_handle->axi_completed) {
 		request_mgr_handle->axi_completed--;
@@ -596,8 +626,16 @@ static void proc_completions(struct cc_drvdata *drvdata)
 
 		cc_req = &request_mgr_handle->req_queue[*tail];
 
+		if (cc_req->cpp_req) {
+			mask = cc_cpp_int_mask(cc_req->cpp_alg,
+					       cc_req->cpp_slot);
+			rc = (drvdata->irq & mask ? -EPERM : 0);
+		} else {
+			rc = 0;
+		}
+
 		if (cc_req->user_cb)
-			cc_req->user_cb(dev, cc_req->user_arg, 0);
+			cc_req->user_cb(dev, cc_req->user_arg, rc);
 		*tail = (*tail + 1) & (MAX_REQUEST_QUEUE_SIZE - 1);
 		dev_dbg(dev, "Dequeue request tail=%u\n", *tail);
 		dev_dbg(dev, "Request completed. axi_completed=%d\n",
@@ -621,13 +659,13 @@ static void comp_handler(unsigned long devarg)
 
 	u32 irq;
 
-	irq = (drvdata->irq & CC_COMP_IRQ_MASK);
+	irq = (drvdata->irq & drvdata->comp_mask);
 
-	if (irq & CC_COMP_IRQ_MASK) {
+	if (irq) {
 		/* To avoid the interrupt from firing as we unmask it,
 		 * we clear it now
 		 */
-		cc_iowrite(drvdata, CC_REG(HOST_ICR), CC_COMP_IRQ_MASK);
+		cc_iowrite(drvdata, CC_REG(HOST_ICR), irq);
 
 		/* Avoid race with above clear: Test completion counter
 		 * once more
@@ -637,6 +675,9 @@ static void comp_handler(unsigned long devarg)
 
 		while (request_mgr_handle->axi_completed) {
 			do {
+				drvdata->irq |= cc_ioread(drvdata,
+							  CC_REG(HOST_IRR));
+				irq = (drvdata->irq & drvdata->comp_mask);
 				proc_completions(drvdata);
 				/* At this point (after proc_completions()),
 				 * request_mgr_handle->axi_completed is 0.
@@ -645,8 +686,7 @@ static void comp_handler(unsigned long devarg)
 						cc_axi_comp_count(drvdata);
 			} while (request_mgr_handle->axi_completed > 0);
 
-			cc_iowrite(drvdata, CC_REG(HOST_ICR),
-				   CC_COMP_IRQ_MASK);
+			cc_iowrite(drvdata, CC_REG(HOST_ICR), irq);
 
 			request_mgr_handle->axi_completed +=
 					cc_axi_comp_count(drvdata);

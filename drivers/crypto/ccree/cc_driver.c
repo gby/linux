@@ -235,6 +235,8 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		new_drvdata->ver_offset = CC_REG(HOST_VERSION_630);
 	}
 
+	new_drvdata->comp_mask = CC_COMP_IRQ_MASK;
+
 	platform_set_drvdata(plat_dev, new_drvdata);
 	new_drvdata->plat_dev = plat_dev;
 
@@ -315,6 +317,8 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		return rc;
 	}
 
+	new_drvdata->sec_disabled = cc_sec_disable;
+
 	if (hw_rev->rev <= CC_HW_REV_712) {
 		/* Verify correct mapping */
 		val = cc_ioread(new_drvdata, new_drvdata->sig_offset);
@@ -328,10 +332,15 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	} else {
 		val = cc_ioread(new_drvdata, CC_REG(SECURITY_DISABLED));
 		val &= CC_SECURITY_DISABLED_MASK;
-		new_drvdata->sec_disabled = !!val;
+		new_drvdata->sec_disabled |= !!val;
+
+		if (!new_drvdata->sec_disabled) {
+			new_drvdata->comp_mask &= CC_CPP_SM4_ABORT_MASK;
+			if (new_drvdata->std_bodies & CC_STD_NIST)
+				new_drvdata->comp_mask &= CC_CPP_AES_ABORT_MASK;
+		}
 	}
 
-	new_drvdata->sec_disabled |= cc_sec_disable;
 	if (new_drvdata->sec_disabled)
 		dev_info(dev, "Security Disabled mode is in effect. Security functions disabled.\n");
 
