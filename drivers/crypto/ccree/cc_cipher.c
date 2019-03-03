@@ -635,6 +635,9 @@ static void cc_cipher_complete(struct device *dev, void *cc_req, int err)
 	unsigned int ivsize = crypto_skcipher_ivsize(sk_tfm);
 	unsigned int len;
 
+	if (err == -EINPROGRESS)
+		goto done;
+
 	cc_unmap_cipher_request(dev, req_ctx, ivsize, src, dst);
 
 	switch (ctx_p->cipher_mode) {
@@ -668,6 +671,7 @@ static void cc_cipher_complete(struct device *dev, void *cc_req, int err)
 
 	kzfree(req_ctx->iv);
 
+done:
 	skcipher_request_complete(req, err);
 }
 
